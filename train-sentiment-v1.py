@@ -31,8 +31,7 @@ def extract_features(df,bs=16):
 
 def train_model(Xtrn, Ytrn, depth=1, bs=100, epochs=100, weights=None):
   _,dim = Xtrn.shape
-  model = Sequential()
-  model.add(Dense(1, input_dim=dim, activation='sigmoid'))
+  model = Sequential(Dense(1, input_dim=dim, activation='sigmoid'))
   model.compile(loss='binary_crossentropy', optimizer="adam", metrics=['accuracy','AUC'])
   model.fit(Xtrn, Ytrn, batch_size=bs, epochs=epochs, sample_weight=weights, verbose=0) # validation_split=0.05, 
   return model
@@ -71,9 +70,10 @@ def do_prediction(model, df, min_size=1):
   
 def parse_args():
   parser = argparse.ArgumentParser(description='Train sentiment classifiers from pre-extracted features')
-  parser.add_argument('-o', dest='output', type=str, default=None, help='Results output filenames')
-  parser.add_argument('-p', dest='pred', type=str, default=None, help='Predictions output filenames')
-  parser.add_argument('-m', dest='model', type=str, default=None, help='Model output filename')
+  parser.add_argument('-o', '--output', type=str, default=None, help='Results output filenames')
+  parser.add_argument('-p', '--pred', type=str, default=None, help='Predictions output filenames')
+  parser.add_argument('-m', '--model', type=str, default=None, help='Model output filename')
+  parser.add_argument('-M','--multionly', action='store_true', help='Only train multi-lingual model, skip per-language traning and evaluation (default: false)')
   parser.add_argument('-s','--seed', type=int, default=0, help='Random seed (default: 0)')
   parser.add_argument('files', metavar='files', type=str, nargs='+', help='List of file names to be processed')
   args = parser.parse_args()
@@ -86,7 +86,7 @@ def main():
   tf.random.set_seed(args.seed)
   
   if args.model:
-    model_filepattern = args.model.replace('.pkl','')+'-{}.pkl'
+    model_filepattern = args.model.replace('.hdf5','')+'-{}.hdf5'
     print("Using model_filepattern=", model_filepattern)
   else:
     model_filepattern = None
@@ -123,43 +123,44 @@ def main():
     raise SystemExit 
   results.loc['multi',['acc','acc-multi','auc','auc-multi']] = [res[1],res[1],res[2],res[2]]
 
-  # evaluate multi model on each language seperately
-  for lang, dfl_tst in df_tst.groupby('lang'):
-    res = do_eval(model_multi, dfl_tst)
-    if not res:
-      print("WARNING: Not enough data to eval multi model on language ",lang, len(dfl_tst), file=sys.stderr)
-      continue
-    results.loc[lang, ['acc-multi','auc-multi']] = [res[1],res[2]]
-  
-  # compute and store individual predictions if requested
-  if args.pred:
-    pred = do_prediction(model_multi, df_tst)
-    df_tst['pred-multi'] = pred
-    df_tst['pred'] = np.nan # will be filled later
-
-  # train one MONOLINGUAL model per language
-  for lang, dfl_tst in df_tst.groupby('lang'):
-    print("Train and eval for language", lang)
-    dfl_trn = df_trn[df_trn['lang']==lang]
-  
-    results.loc[lang, ['ntrn','ntst']] = [len(dfl_trn),len(dfl_tst)]
-
-    # train on training data of this language data
-    model_lang = do_train(dfl_trn, suffix=lang, model_filepattern=model_filepattern)
-    if not model_lang:
-      print("WARNING: Did not get a model for language", lang)
-      continue
-
-    # eval on test data of this language
-    res = do_eval(model_lang, dfl_tst)
-    if not res:
-      print("WARNING: Not enough data to eval monolingual model on language ",lang, len(dfl_tst), file=sys.stderr)
-      continue
-    results.loc[lang, ['acc','auc']] = [res[1],res[2]]
+  if not args.multionly:
+    # evaluate multi model on each language seperately
+    for lang, dfl_tst in df_tst.groupby('lang'):
+      res = do_eval(model_multi, dfl_tst)
+      if not res:
+        print("WARNING: Not enough data to eval multi model on language ",lang, len(dfl_tst), file=sys.stderr)
+        continue
+      results.loc[lang, ['acc-multi','auc-multi']] = [res[1],res[2]]
     
+    # compute and store individual predictions if requested
     if args.pred:
-      pred = do_prediction(model_lang, dfl_tst)
-      df_tst.loc[df_tst['lang']==lang, 'pred'] = pred
+      pred = do_prediction(model_multi, df_tst)
+      df_tst['pred-multi'] = pred
+      df_tst['pred'] = np.nan # will be filled later
+
+    # train one MONOLINGUAL model per language
+    for lang, dfl_tst in df_tst.groupby('lang'):
+      print("Train and eval for language", lang)
+      dfl_trn = df_trn[df_trn['lang']==lang]
+    
+      results.loc[lang, ['ntrn','ntst']] = [len(dfl_trn),len(dfl_tst)]
+
+      # train on training data of this language data
+      model_lang = do_train(dfl_trn, suffix=lang, model_filepattern=model_filepattern)
+      if not model_lang:
+        print("WARNING: Did not get a model for language", lang)
+        continue
+
+      # eval on test data of this language
+      res = do_eval(model_lang, dfl_tst)
+      if not res:
+        print("WARNING: Not enough data to eval monolingual model on language ",lang, len(dfl_tst), file=sys.stderr)
+        continue
+      results.loc[lang, ['acc','auc']] = [res[1],res[2]]
+      
+      if args.pred:
+        pred = do_prediction(model_lang, dfl_tst)
+        df_tst.loc[df_tst['lang']==lang, 'pred'] = pred
   
   # store results if requested
   if args.output:
