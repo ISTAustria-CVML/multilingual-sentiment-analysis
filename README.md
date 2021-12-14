@@ -40,9 +40,10 @@ $ classifier("I am happy.")
 
 $ classifier("Ich bin traurig!")
 {'label': 'negative', 'score': 0.97398442029953}
+```
 
 For a minimal working code example see the `predict-sentiment-v2.py` file.
-```
+
 
 ### Citation
 
