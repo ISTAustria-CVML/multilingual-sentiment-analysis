@@ -32,7 +32,8 @@ deep network. Using it is extremely simple using Huggingface's
 
 ```
 from transformers import pipeline
-classifier = pipeline("text-classification", "clampert/multilingual-sentiment-covid19")
+classifier = pipeline("text-classification", 
+                      "clampert/multilingual-sentiment-covid19")
 
 $ classifier("I am happy.")
 {'label': 'positive', 'score': 0.918508768081665}
@@ -41,7 +42,7 @@ $ classifier("Ich bin traurig!")
 {'label': 'negative', 'score': 0.97398442029953}
 
 For a minimal working code example see the `predict-sentiment-v2.py` file.
-
+```
 
 ### Citation
 
